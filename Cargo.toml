@@ -2,7 +2,7 @@
 name = "currency_layer"
 version = "0.1.0"
 authors = ["Ryan Bluth <ryanbluth93@gmail.com>"]
-desription = "Client for free currency layer APIs"
+description = "Client for free currency layer APIs"
 categories = ["api-bindings"]
 repository = "https://github.com/RyanBluth/currency-layer-rs"
 license = "MIT"
