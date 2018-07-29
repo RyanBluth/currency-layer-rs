@@ -129,7 +129,7 @@ impl Client {
         if success_guard.success {
             let result: CurrencyRates = serde_json::from_str(body_buf.as_str())?;
 
-            let base_val = 1.0 / result.quotes.get(&format!("USD{}", base)).unwrap();
+            let base_val = 1.0 / result.quotes.get(&format!("USD{}", base))?;
 
             let mut res = CurrencyRates {
                 timestamp: result.timestamp,
