@@ -29,7 +29,7 @@
 
     fn main(){
         let client = Client::new("YOU_API_KEY");
-        let res = client.get_live_rates(
+        let res = client.get_historical_rates(
             // Base currency that results are relative to
             "CAD", 
             // Currencies to get rates for
@@ -37,7 +37,7 @@
             // Date as a tuple 3 in the format YYYY, MM, DD
             (2015, 2, 23)
         );
-        
+
         println!("{}", res.quotes.get("GBP").unwrap());
         println!("{}", res.quotes.get("USD").unwrap());
     }
