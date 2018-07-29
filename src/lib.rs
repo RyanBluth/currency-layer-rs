@@ -3,7 +3,7 @@
 #[macro_use]
 extern crate serde_derive;
 
-#[macro_use] 
+#[macro_use]
 extern crate failure;
 
 extern crate serde;
@@ -23,39 +23,38 @@ use failure::Error;
 
 /// Currency Layer errors
 #[derive(Debug, Fail)]
-pub enum CurrencyLayerError{
-    
+pub enum CurrencyLayerError {
     /// This error is occur if an invalid currency symbol is provided
     #[fail(display = "Invalid currency symbol: {}", symbol)]
-    InvalidCurrency{
+    InvalidCurrency {
         /// The invalid currency symbol
-        symbol: String
+        symbol: String,
     },
 
     /// This error will occure if Currency Layer returns an error response
-    #[fail(display = "Currency Layer responded with an error: Code: {}. Message: {}", code, message)]
-    ServerError{
+    #[fail(
+        display = "Currency Layer responded with an error: Code: {}. Message: {}", code, message
+    )]
+    ServerError {
         /// The error code returned in the message body
         code: u16,
         /// The returned error message
-        message: String
-    }
+        message: String,
+    },
 }
-
 
 /// Client for making requests to Currency Layer
 pub struct Client {
     /// API Key which can be optained from the Currency Layer website https://currencylayer.com/
     key: String,
-    
+
     /// Reqwest client
     http_client: reqwest::Client,
 }
 
 impl Client {
-    
     /// Creates a new client using the provided key for all requests.
-    /// 
+    ///
     /// Only the free APIs are supported.
     pub fn new(key: &str) -> Client {
         Client {
@@ -65,7 +64,7 @@ impl Client {
     }
 
     /// Get the excahnge rates for the provide currencies.
-    /// 
+    ///
     /// All values are relative to the base currency.
     pub fn get_live_rates(
         &self,
@@ -76,9 +75,9 @@ impl Client {
     }
 
     /// Get the excahnge rates for the provide currencies on a paticular day.
-    /// 
+    ///
     /// All values are relative to the base currency.
-    /// 
+    ///
     /// date is a tuple 3 in the format year, month, day.
     pub fn get_historical_rates(
         &self,
@@ -86,8 +85,12 @@ impl Client {
         currencies: Vec<&str>,
         date: (u16, u16, u16),
     ) -> Result<CurrencyRates, Error> {
-    
-        return self.get_rates(base, currencies, Some(date), "http://apilayer.net/api/historical");
+        return self.get_rates(
+            base,
+            currencies,
+            Some(date),
+            "http://apilayer.net/api/historical",
+        );
     }
 
     fn get_rates(
@@ -97,7 +100,6 @@ impl Client {
         date: Option<(u16, u16, u16)>,
         url: &str,
     ) -> Result<CurrencyRates, Error> {
-
         let mut mut_currencies = currencies.clone();
 
         mut_currencies.push(base);
@@ -105,19 +107,16 @@ impl Client {
         let currencies_str = mut_currencies.join(",");
 
         let mut query_items = vec![
-                ("currencies", currencies_str),
-                ("format", "1".into()),
-                ("access_key", self.key.clone()),
-            ];
-        
-        if let Some(d) = date{
+            ("currencies", currencies_str),
+            ("format", "1".into()),
+            ("access_key", self.key.clone()),
+        ];
+
+        if let Some(d) = date {
             query_items.push(("date", format!("{}-{:02}-{:02}", d.0, d.1, d.2)));
         }
 
-        let request = self.http_client
-            .get(url)
-            .query(&query_items)
-            .send();
+        let request = self.http_client.get(url).query(&query_items).send();
 
         let mut res = request?;
 
@@ -142,17 +141,17 @@ impl Client {
                     res.quotes.insert(String::from(c), base_val * quote);
                 } else {
                     return Err(CurrencyLayerError::InvalidCurrency {
-                        symbol: String::from(c)
+                        symbol: String::from(c),
                     }.into());
                 }
             }
             return Ok(res);
-        }else {
+        } else {
             let result: ErrorResponse = serde_json::from_str(body_buf.as_str())?;
             return Err(CurrencyLayerError::ServerError {
                 code: result.error.code,
-                message: result.error.info
-            }.into())
+                message: result.error.info,
+            }.into());
         }
     }
 }
