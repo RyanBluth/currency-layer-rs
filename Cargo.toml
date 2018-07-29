@@ -7,7 +7,7 @@ categories = ["api-bindings"]
 repository = "https://github.com/RyanBluth/currency-layer-rs"
 license = "MIT"
 readme = "README.md"
-keywords = ["currencylayer", "currency", "layer", "exchange", "rate", "rates"]
+keywords = ["currency", "layer", "exchange", "rate", "rates"]
 
 [dependencies]
 serde = "1.0.68"
