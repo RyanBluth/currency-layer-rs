@@ -4,9 +4,9 @@
 
 ### Live Rates
 ```rust
-    extern crate currencylayer
+    extern crate currency_layer
 
-    use currencylayer::Client
+    use currency_layer::Client
 
     fn main(){
         let client = Client::new("YOU_API_KEY");
@@ -23,9 +23,9 @@
 
 ### Historical Rates
 ```rust
-    extern crate currencylayer
+    extern crate currency_layer
 
-    use currencylayer::Client
+    use currency_layer::Client
 
     fn main(){
         let client = Client::new("YOU_API_KEY");
