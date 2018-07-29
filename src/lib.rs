@@ -129,23 +129,29 @@ impl Client {
         if success_guard.success {
             let result: CurrencyRates = serde_json::from_str(body_buf.as_str())?;
 
-            let base_val = 1.0 / result.quotes.get(&format!("USD{}", base))?;
+            if let Some(base_quote) = result.quotes.get(&format!("USD{}", base)) {
+                let base_val = 1.0 / base_quote;
 
-            let mut res = CurrencyRates {
-                timestamp: result.timestamp,
-                quotes: HashMap::new(),
-            };
+                let mut res = CurrencyRates {
+                    timestamp: result.timestamp,
+                    quotes: HashMap::new(),
+                };
 
-            for c in currencies {
-                if let Some(quote) = result.quotes.get(&format!("USD{}", c)) {
-                    res.quotes.insert(String::from(c), base_val * quote);
-                } else {
-                    return Err(CurrencyLayerError::InvalidCurrency {
-                        symbol: String::from(c),
-                    }.into());
+                for c in currencies {
+                    if let Some(quote) = result.quotes.get(&format!("USD{}", c)) {
+                        res.quotes.insert(String::from(c), base_val * quote);
+                    } else {
+                        return Err(CurrencyLayerError::InvalidCurrency {
+                            symbol: String::from(c),
+                        }.into());
+                    }
                 }
+                return Ok(res);
+            } else {
+                return Err(CurrencyLayerError::InvalidCurrency {
+                    symbol: String::from(base),
+                }.into());
             }
-            return Ok(res);
         } else {
             let result: ErrorResponse = serde_json::from_str(body_buf.as_str())?;
             return Err(CurrencyLayerError::ServerError {
