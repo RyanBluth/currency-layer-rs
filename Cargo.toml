@@ -1,6 +1,6 @@
 [package]
 name = "currency_layer"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Ryan Bluth <ryanbluth93@gmail.com>"]
 description = "Client for free currency layer APIs"
 categories = ["api-bindings"]
@@ -8,10 +8,16 @@ repository = "https://github.com/RyanBluth/currency-layer-rs"
 license = "MIT"
 readme = "README.md"
 keywords = ["currency", "layer", "exchange", "rate", "rates"]
+edition = "2018"
 
 [dependencies]
-serde = "1.0.68"
-serde_json = "1.0.22"
-serde_derive = "1.0.68"
-reqwest = "0.8.6"
-failure = "0.1.1"
+chrono = {version="0.4.0",features=["serde"]}
+serde = {version="1.0.137",features=["derive"]}
+serde_json = "1.0.81"
+reqwest = "0.11.10"
+failure = "0.1.8"
+rusty-money = {version="0.4.1",features=["iso"]}
+rust_decimal = "1.24.0"
+
+[dev-dependencies]
+tokio = {version="1.2.0",features=["macros", "rt-multi-thread"]}

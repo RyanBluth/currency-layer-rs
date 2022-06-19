@@ -1,25 +1,19 @@
 //! currency-layer-rs is a simple client for accesing the free APIs at https://currencylayer.com/
 
 #[macro_use]
-extern crate serde_derive;
-
-#[macro_use]
 extern crate failure;
 
+extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
 
-extern crate reqwest;
-
 mod types;
 
+use failure::Error;
+use rusty_money::{iso, ExchangeRate};
+use std::collections::HashMap;
 pub use types::CurrencyRates;
 use types::*;
-
-use std::collections::HashMap;
-use std::io::Read;
-
-use failure::Error;
 
 /// Currency Layer errors
 #[derive(Debug, Fail)]
@@ -33,7 +27,8 @@ pub enum CurrencyLayerError {
 
     /// This error will occure if Currency Layer returns an error response
     #[fail(
-        display = "Currency Layer responded with an error: Code: {}. Message: {}", code, message
+        display = "Currency Layer responded with an error: Code: {}. Message: {}",
+        code, message
     )]
     ServerError {
         /// The error code returned in the message body
@@ -63,51 +58,32 @@ impl Client {
         }
     }
 
-    /// Get the excahnge rates for the provide currencies.
-    ///
-    /// All values are relative to the base currency.
-    pub fn get_live_rates(
-        &self,
-        base: &str,
-        currencies: Vec<&str>,
-    ) -> Result<CurrencyRates, Error> {
-        return self.get_rates(base, currencies, None, "http://apilayer.net/api/live");
+    /// Get the exchange rates for the provide currencies.
+    pub async fn get_live_rates(&self, currencies: Vec<&str>) -> Result<CurrencyRates<'_>, Error> {
+        self.get_rates(currencies, None, "http://apilayer.net/api/live")
+            .await
     }
 
-    /// Get the excahnge rates for the provide currencies on a paticular day.
-    ///
-    /// All values are relative to the base currency.
+    /// Get the exchange rates for the provide currencies on a particular day.
     ///
     /// date is a tuple 3 in the format year, month, day.
-    pub fn get_historical_rates(
+    pub async fn get_historical_rates(
         &self,
-        base: &str,
         currencies: Vec<&str>,
         date: (u16, u16, u16),
-    ) -> Result<CurrencyRates, Error> {
-        return self.get_rates(
-            base,
-            currencies,
-            Some(date),
-            "http://apilayer.net/api/historical",
-        );
+    ) -> Result<CurrencyRates<'_>, Error> {
+        self.get_rates(currencies, Some(date), "http://apilayer.net/api/historical")
+            .await
     }
 
-    fn get_rates(
+    async fn get_rates(
         &self,
-        base: &str,
         currencies: Vec<&str>,
         date: Option<(u16, u16, u16)>,
         url: &str,
-    ) -> Result<CurrencyRates, Error> {
-        let mut mut_currencies = currencies.clone();
-
-        mut_currencies.push(base);
-
-        let currencies_str = mut_currencies.join(",");
-
+    ) -> Result<CurrencyRates<'_>, Error> {
         let mut query_items = vec![
-            ("currencies", currencies_str),
+            ("currencies", currencies.join(",")),
             ("format", "1".into()),
             ("access_key", self.key.clone()),
         ];
@@ -116,48 +92,55 @@ impl Client {
             query_items.push(("date", format!("{}-{:02}-{:02}", d.0, d.1, d.2)));
         }
 
-        let request = self.http_client.get(url).query(&query_items).send();
+        let response = self.http_client.get(url).query(&query_items).send().await?;
 
-        let mut res = request?;
+        let body_buf = response.text().await?;
 
-        let mut body_buf = String::new();
-
-        res.read_to_string(&mut body_buf)?;
-
-        let success_guard: SuccessGuard = serde_json::from_str(body_buf.as_str())?;
-
-        if success_guard.success {
-            let result: CurrencyRates = serde_json::from_str(body_buf.as_str())?;
-
-            if let Some(base_quote) = result.quotes.get(&format!("USD{}", base)) {
-                let base_val = 1.0 / base_quote;
-
-                let mut res = CurrencyRates {
-                    timestamp: result.timestamp,
-                    quotes: HashMap::new(),
-                };
-
-                for c in currencies {
-                    if let Some(quote) = result.quotes.get(&format!("USD{}", c)) {
-                        res.quotes.insert(String::from(c), base_val * quote);
-                    } else {
-                        return Err(CurrencyLayerError::InvalidCurrency {
-                            symbol: String::from(c),
-                        }.into());
-                    }
-                }
-                return Ok(res);
-            } else {
-                return Err(CurrencyLayerError::InvalidCurrency {
-                    symbol: String::from(base),
-                }.into());
-            }
-        } else {
-            let result: ErrorResponse = serde_json::from_str(body_buf.as_str())?;
+        let success_guard: SuccessGuard = serde_json::from_str(&body_buf)?;
+        if !success_guard.success {
+            let result: ErrorResponse = serde_json::from_str(&body_buf)?;
             return Err(CurrencyLayerError::ServerError {
                 code: result.error.code,
                 message: result.error.info,
-            }.into());
+            }
+            .into());
         }
+
+        let result: CurrencyRatesResponse = serde_json::from_str(&body_buf)?;
+
+        fn lookup(symbol: &str) -> Result<&'static iso::Currency, Error> {
+            iso::find(symbol).ok_or(
+                CurrencyLayerError::InvalidCurrency {
+                    symbol: symbol.to_string().clone(),
+                }
+                .into(),
+            )
+        }
+
+        let quotes: HashMap<String, ExchangeRate<iso::Currency>> = result
+            .quotes
+            .into_iter()
+            .map(|(symbol_pair, rate)| {
+                let (from_symbol, to_symbol) = symbol_pair.split_at(3);
+                (
+                    (
+                        from_symbol.to_string().clone(),
+                        to_symbol.to_string().clone(),
+                    ),
+                    rate,
+                )
+            })
+            // Drop "USDUSD" - ExchangeRate::new is not happy with it.
+            .filter(|((from_symbol, to_symbol), _rate)| from_symbol != to_symbol)
+            .map(|((from_symbol, to_symbol), rate)| {
+                let from = lookup(&from_symbol)?;
+                let to = lookup(&to_symbol)?;
+                Ok((to_symbol, ExchangeRate::new(from, to, rate)?))
+            })
+            .collect::<Result<_, Error>>()?;
+        Ok(CurrencyRates {
+            timestamp: result.timestamp,
+            quotes,
+        })
     }
 }
