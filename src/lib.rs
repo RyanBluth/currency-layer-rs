@@ -1,33 +1,25 @@
 //! currency-layer-rs is a simple client for accesing the free APIs at https://currencylayer.com/
-
-#[macro_use]
-extern crate failure;
-
-extern crate reqwest;
-extern crate serde;
-extern crate serde_json;
-
 mod types;
 
-use failure::Error;
+use thiserror::Error;
 use rusty_money::{iso, ExchangeRate};
 use std::collections::HashMap;
 pub use types::CurrencyRates;
 use types::*;
 
 /// Currency Layer errors
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum CurrencyLayerError {
     /// This error is occur if an invalid currency symbol is provided
-    #[fail(display = "Invalid currency symbol: {}", symbol)]
+    #[error("Invalid currency symbol: {}", symbol)]
     InvalidCurrency {
         /// The invalid currency symbol
         symbol: String,
     },
 
     /// This error will occure if Currency Layer returns an error response
-    #[fail(
-        display = "Currency Layer responded with an error: Code: {}. Message: {}",
+    #[error(
+        "Currency Layer responded with an error: Code: {}. Message: {}",
         code, message
     )]
     ServerError {
@@ -36,6 +28,18 @@ pub enum CurrencyLayerError {
         /// The returned error message
         message: String,
     },
+
+    #[error(transparent)]
+    MoneyError(#[from] rusty_money::MoneyError),
+
+    #[error(transparent)]
+    SerdeError(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    ReqwestError(#[from] reqwest::Error),
+
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
 }
 
 /// Client for making requests to Currency Layer
@@ -59,7 +63,7 @@ impl Client {
     }
 
     /// Get the exchange rates for the provide currencies.
-    pub async fn get_live_rates(&self, currencies: Vec<&str>) -> Result<CurrencyRates<'_>, Error> {
+    pub async fn get_live_rates(&self, currencies: Vec<&str>) -> Result<CurrencyRates<'_>, CurrencyLayerError> {
         self.get_rates(currencies, None, "http://apilayer.net/api/live")
             .await
     }
@@ -71,7 +75,7 @@ impl Client {
         &self,
         currencies: Vec<&str>,
         date: (u16, u16, u16),
-    ) -> Result<CurrencyRates<'_>, Error> {
+    ) -> Result<CurrencyRates<'_>, CurrencyLayerError> {
         self.get_rates(currencies, Some(date), "http://apilayer.net/api/historical")
             .await
     }
@@ -81,7 +85,7 @@ impl Client {
         currencies: Vec<&str>,
         date: Option<(u16, u16, u16)>,
         url: &str,
-    ) -> Result<CurrencyRates<'_>, Error> {
+    ) -> Result<CurrencyRates<'_>, CurrencyLayerError> {
         let mut query_items = vec![
             ("currencies", currencies.join(",")),
             ("format", "1".into()),
@@ -108,7 +112,7 @@ impl Client {
 
         let result: CurrencyRatesResponse = serde_json::from_str(&body_buf)?;
 
-        fn lookup(symbol: &str) -> Result<&'static iso::Currency, Error> {
+        fn lookup(symbol: &str) -> Result<&'static iso::Currency, CurrencyLayerError> {
             iso::find(symbol).ok_or(
                 CurrencyLayerError::InvalidCurrency {
                     symbol: symbol.to_string().clone(),
@@ -137,7 +141,7 @@ impl Client {
                 let to = lookup(&to_symbol)?;
                 Ok((to_symbol, ExchangeRate::new(from, to, rate)?))
             })
-            .collect::<Result<_, Error>>()?;
+            .collect::<Result<_, CurrencyLayerError>>()?;
         Ok(CurrencyRates {
             timestamp: result.timestamp,
             quotes,
